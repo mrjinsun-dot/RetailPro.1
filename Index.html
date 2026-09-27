@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Retail Desk Pro - Multi-Tenant Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-800 antialiased min-h-screen select-none">
+
+  <!-- ==================== 0. SUPER ADMIN PORTAL (MASTER SAAS) ==================== -->
+  <div id="superAdminScreen" style="display: none;" class="min-h-screen bg-slate-950 text-white p-4">
+    <div class="max-w-md mx-auto space-y-4">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+        <div>
+          <h1 class="text-lg font-black text-amber-400 tracking-tight">MASTER SAAS PORTAL</h1>
+          <p class="text-[11px] text-slate-400">सुपर एडमिन - सभी स्टोर व सब्सक्रिप्शन कंट्रोल</p>
+        </div>
+        <button onclick="exitSuperAdmin()" class="py-1 px-3 bg-rose-600 hover:bg-rose-700 text-xs font-bold rounded-lg cursor-pointer">
+          बंद करें (Exit)
+        </button>
+      </div>
+
+      <!-- Register New Client/Store -->
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-plus-circle text-amber-400"></i> नया स्टोर / क्लाइंट जोड़ें
+        </h3>
+        <input id="saStoreCode" type="text" placeholder="यूनिक स्टोर कोड (उदा. SHOP01, MOB99)" class="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs uppercase font-black tracking-wider outline-none text-white">
+        <input id="saStoreName" type="text" placeholder="दुकान / शोरूम का नाम" class="w-full p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold outline-none text-white">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-0.5">मास्टर पिन (6-अंक)</label>
+            <input id="saMasterPin" type="password" maxlength="6" value="123456" class="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold outline-none text-white">
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-400 block mb-0.5">वैधता कब तक (Expiry)</label>
+            <input id="saValidTill" type="date" class="w-full p-2 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold outline-none text-white">
+          </div>
+        </div>
+        <button onclick="registerNewStore()" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition cursor-pointer">
+          + स्टोर लाइसेंस चालू करें
+        </button>
+      </div>
+
+      <!-- Stores List -->
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-store text-emerald-400"></i> सक्रिय क्लाइंट लिस्ट (<span id="saStoreCount">0</span>)
+        </h3>
+        <div id="saStoreList" class="space-y-2 max-h-96 overflow-y-auto text-xs"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SUBSCRIPTION EXPIRED SCREEN ==================== -->
+  <div id="subscriptionLockScreen" style="display: none;" class="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+    <div class="bg-white p-6 rounded-3xl text-center max-w-sm w-full space-y-4 shadow-2xl">
+      <div class="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto text-2xl">
+        <i class="fa-solid fa-lock"></i>
+      </div>
+      <div>
+        <h2 class="text-lg font-black text-slate-900">सब्सक्रिप्शन समाप्त!</h2>
+        <p class="text-xs text-slate-500 mt-1">आपके स्टोर (<span id="expiredStoreCodeText" class="font-bold text-slate-800"></span>) का लाइसेंस समाप्त हो गया है।</p>
+      </div>
+      <p class="text-xs bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-600">
+        ऐप को रिन्यू कराने और डेटा पुनः चालू करने के लिए एडमिन से संपर्क करें।
+      </p>
+      <button onclick="backToLoginFromLock()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer">
+        वापस लॉगिन स्क्रीन पर जाएँ
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== 1. LOGIN SCREEN ==================== -->
+  <div id="loginScreen" class="flex items-center justify-center min-h-screen p-4 bg-slate-900">
+    <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-sm border border-slate-100">
+      
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 bg-indigo-900 text-white rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg shadow-indigo-900/30">
+          <i class="fa-solid fa-boxes-stacked text-2xl"></i>
+        </div>
+        <h1 class="text-2xl font-black text-slate-900 tracking-tight">RETAIL DESK PRO</h1>
+        <p class="text-xs text-slate-500 font-medium mt-0.5">हाजिरी, आइटम अप्रूवल व कमीशन मैनेजमेंट</p>
+      </div>
+
+      <!-- Store Code Input -->
+      <div class="mb-4 p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl">
+        <div class="flex justify-between items-center mb-1">
+          <label class="block text-[11px] font-bold text-indigo-950 uppercase tracking-wider">
+            <i class="fa-solid fa-building mr-1 text-indigo-700"></i> स्टोर आईडी / कंपनी कोड
+          </label>
+          <span onclick="triggerSuperAdminPrompt()" class="text-[9px] text-indigo-500 font-mono cursor-pointer hover:underline">🔐 Master</span>
+        </div>
+        <input id="loginCompanyCode" type="text" placeholder="उदा. SHOP01 या STORE1" class="w-full p-2.5 bg-white border border-indigo-300 rounded-xl text-sm font-black uppercase tracking-widest text-indigo-950 focus:ring-2 focus:ring-indigo-900 outline-none">
+        <p class="text-[10px] text-indigo-700/80 mt-1">अपने स्टोर का यूनिक कोड दर्ज करें</p>
+      </div>
+
+      <div class="flex p-1 bg-slate-100 rounded-xl mb-5">
+        <button id="tabStaff" type="button" onclick="switchLoginTab('staff')" class="flex-1 py-2.5 text-xs font-bold rounded-lg bg-white shadow-sm text-indigo-950 transition cursor-pointer">
+          स्टाफ लॉगिन
+        </button>
+        <button id="tabOwner" type="button" onclick="switchLoginTab('owner')" class="flex-1 py-2.5 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition cursor-pointer">
+          मालिक (Admin)
+        </button>
+      </div>
+
+      <!-- Staff Form -->
+      <div id="staffLoginForm" class="space-y-4" style="display: block;">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Employee ID</label>
+          <input id="staffEmpId" type="text" placeholder="उदा. EMP101" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold uppercase tracking-wider focus:ring-2 focus:ring-indigo-900 outline-none">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">4-अंकों का पिन (PIN)</label>
+          <input id="staffPinInput" type="password" maxlength="4" placeholder="••••" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black tracking-widest focus:ring-2 focus:ring-indigo-900 outline-none">
+        </div>
+        <button onclick="loginStaff()" type="button" class="w-full py-3.5 bg-indigo-900 hover:bg-indigo-800 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-900/20 transition cursor-pointer">
+          स्टाफ लॉगिन करें →
+        </button>
+      </div>
+
+      <!-- Owner Form -->
+      <div id="ownerLoginForm" class="space-y-4" style="display: none;">
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Admin नाम</label>
+          <input id="ownerNameInput" type="text" value="Store Owner" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-900 outline-none">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">6-अंकों का मास्टर पिन</label>
+          <input id="ownerPinInput" type="password" maxlength="6" placeholder="••••••" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-black tracking-widest focus:ring-2 focus:ring-indigo-900 outline-none">
+        </div>
+        <button onclick="loginOwner()" type="button" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg shadow-slate-900/20 transition cursor-pointer">
+          Admin लॉगिन करें 🔐
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== 2. MAIN APP CONTAINER ==================== -->
+  <div id="appContainer" style="display: none;" class="max-w-md mx-auto min-h-screen bg-slate-50 shadow-2xl flex flex-col pb-6 relative overflow-x-hidden">
+    
+    <!-- Top Header -->
+    <header class="bg-slate-950 text-white p-4 sticky top-0 z-40 flex justify-between items-center shadow-md">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-full bg-indigo-700 flex items-center justify-center font-bold text-sm" id="userAvatar">U</div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <h2 id="headerUserName" class="font-bold text-sm leading-tight">User</h2>
+            <span id="cloudSyncIndicator" class="w-2 h-2 rounded-full bg-emerald-400" title="Cloud Live"></span>
+          </div>
+          <div class="flex items-center gap-1 mt-0.5 flex-wrap">
+            <span id="headerCompanyBadge" class="text-[9px] bg-indigo-600 px-1.5 py-0.5 rounded font-black text-white uppercase tracking-wider">STORE</span>
+            <span id="headerRoleBadge" class="text-[9px] bg-slate-800 px-1.5 py-0.5 rounded font-semibold text-slate-200 uppercase">STAFF</span>
+            <span id="headerBranchBadge" class="text-[9px] bg-amber-500/20 border border-amber-400/40 px-1.5 py-0.5 rounded font-bold text-amber-200 uppercase">Main Store</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <button onclick="manualSyncFromCloud()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition cursor-pointer" title="डेटा रिफ्रेश करें">
+          <i class="fa-solid fa-arrows-rotate text-sm" id="syncIcon"></i>
+        </button>
+        <button id="btnDotMenu" onclick="toggleDotMenu()" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center transition cursor-pointer" style="display: none;">
+          <i class="fa-solid fa-gear text-sm"></i>
+        </button>
+        <button id="btnStaffLogout" onclick="appLogout()" class="w-9 h-9 rounded-xl bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition cursor-pointer" style="display: none;" title="लॉगआउट">
+          <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- ==================== 3. ADMIN SETTINGS SIDE-PANEL ==================== -->
+    <div id="dotMenuModal" style="display: none;" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end" onclick="closeDotMenuOnBackdrop(event)">
+      <div class="bg-white w-5/6 max-w-xs h-full shadow-2xl p-5 overflow-y-auto space-y-4" onclick="event.stopPropagation()">
+        <div class="flex justify-between items-center pb-3 border-b border-slate-100">
+          <h3 class="font-black text-slate-900 text-sm flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-indigo-900"></i> स्टोर सेटिंग्स
+          </h3>
+          <button onclick="toggleDotMenu()" class="text-slate-400 hover:text-slate-700 text-lg cursor-pointer">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <!-- Add Employee -->
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <p class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-user-plus text-indigo-900"></i> नया कर्मचारी जोड़ें
+            </p>
+            <input id="empNewName" type="text" placeholder="कर्मचारी का नाम" class="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs outline-none">
+            <input id="empNewPhone" type="tel" placeholder="मोबाइल नंबर" class="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs outline-none">
+            <div class="grid grid-cols-2 gap-1.5">
+              <input id="empNewPin" type="password" maxlength="4" placeholder="4-अंक पिन" class="p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
+              <select id="empNewBranchSelect" class="p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-950"></select>
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 block mb-0.5">मासिक टारगेट (पीस / Units)</label>
+              <input id="empMonthlyTarget" type="number" placeholder="उदा. 150" value="100" class="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
+            </div>
+            <button onclick="createEmployeeID()" class="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition cursor-pointer">
+              ✓ कर्मचारी बनाएं
+            </button>
+          </div>
+
+          <!-- Dynamic Items/Categories Manager -->
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+            <p class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-tags text-indigo-900"></i> आइटम व कमीशन नियम
+            </p>
+            <div class="flex gap-1.5">
+              <input id="newCatName" type="text" placeholder="आइटम (उदा. शर्ट / जूता)" class="w-2/3 p-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none">
+              <input id="newCatRate" type="number" placeholder="₹/Pc" class="w-1/3 p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none">
+            </div>
+            <button onclick="addNewCategory()" class="w-full py-1.5 bg-indigo-900 hover:bg-indigo-800 text-white font-bold rounded-lg text-xs transition cursor-pointer">
+              + नया आइटम जोड़ें
+            </button>
+            <div id="categoryManagerList" class="space-y-1 pt-1 max-h-36 overflow-y-auto"></div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="space-y-1.5 pt-1">
+            <button onclick="exportToExcel()" class="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold rounded-xl flex items-center justify-between transition cursor-pointer">
+              <span class="flex items-center gap-2"><i class="fa-solid fa-file-excel text-emerald-700"></i> Excel रिपोर्ट डाउनलोड</span>
+              <i class="fa-solid fa-arrow-down text-xs text-emerald-600"></i>
+            </button>
+            <button onclick="changeMasterPIN()" class="w-full py-2.5 px-3 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 font-bold rounded-xl flex items-center justify-between transition cursor-pointer">
+              <span class="flex items-center gap-2"><i class="fa-solid fa-key text-indigo-900"></i> मास्टर पिन बदलें</span>
+              <i class="fa-solid fa-pen text-xs text-slate-400"></i>
+            </button>
+            <button onclick="clearAllDataEmergency()" class="w-full py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 font-bold rounded-xl flex items-center justify-between transition cursor-pointer">
+              <span class="flex items-center gap-2"><i class="fa-solid fa-trash text-rose-600"></i> लोकल कैश साफ़ करें</span>
+              <i class="fa-solid fa-triangle-exclamation text-xs text-rose-500"></i>
+            </button>
+            <button onclick="appLogout()" class="w-full py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer mt-3">
+              <i class="fa-solid fa-arrow-right-from-bracket"></i> Admin लॉगआउट
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== STAFF VIEW ==================== -->
+    <main id="staffView" style="display: none;" class="p-4 space-y-4 flex-1">
+      
+      <!-- Live Stats -->
+      <div class="bg-gradient-to-r from-emerald-800 to-teal-900 text-white p-4 rounded-2xl shadow-sm">
+        <div class="flex justify-between items-center">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-200">स्वीकृत कमीशन (<span id="staffBranchName">Branch</span>)</span>
+          <span class="text-[10px] bg-emerald-700/80 px-2 py-0.5 rounded-full font-bold">Approved</span>
+        </div>
+        <div class="flex justify-between items-baseline mt-1">
+          <h2 id="staffCommissionVal" class="text-2xl font-black text-emerald-300">₹0</h2>
+          <div class="text-right">
+            <span class="text-[10px] text-emerald-200">स्वीकृत पीस / टारगेट:</span>
+            <p class="text-sm font-bold text-white"><span id="staffTotalPiecesVal">0</span> / <span id="staffTargetPiecesVal">100</span> Pc</p>
+          </div>
+        </div>
+        <div class="w-full bg-black/30 h-1.5 rounded-full overflow-hidden mt-2.5">
+          <div id="staffProgressFill" class="bg-emerald-400 h-full rounded-full transition-all" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- ACTIVE STATUS BAR (When Checked-In) -->
+      <div id="staffActiveDutyBar" style="display: none;" class="p-3 bg-emerald-50 border border-emerald-300 rounded-2xl flex justify-between items-center shadow-xs">
+        <div class="flex items-center space-x-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <div>
+            <p class="text-xs font-bold text-emerald-950">ड्यूटी चालू है (Checked-In)</p>
+            <p class="text-[10px] text-emerald-700 font-semibold" id="staffDutyStartTime">समय: --:--</p>
+          </div>
+        </div>
+        <button onclick="recordGpsAttendance('Check-Out')" class="py-1.5 px-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-[11px] rounded-xl shadow-xs transition flex items-center gap-1 cursor-pointer">
+          <i class="fa-solid fa-door-open"></i> Check-Out
+        </button>
+      </div>
+
+      <!-- GPS & SELFIE ATTENDANCE CARD -->
+      <div id="staffCheckInCard" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex justify-between items-center">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-camera text-indigo-900"></i> सेल्फ़ी लेकर Check-In करें
+          </h3>
+          <span class="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full font-bold">Duty Off</span>
+        </div>
+        <p class="text-[11px] text-slate-500">सेल्फ़ी लेते ही सही समय रिकॉर्ड हो जाएगा और सेल्स एंट्री खुल जाएगी।</p>
+
+        <div class="border-2 border-dashed border-indigo-200 rounded-xl p-2.5 text-center bg-indigo-50/50 relative hover:border-indigo-500 transition">
+          <input type="file" id="attendanceSelfieInput" accept="image/*" capture="user" onchange="compressAttendanceSelfie(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
+          <img id="attendanceSelfiePreview" style="display: none;" class="w-20 h-20 object-cover rounded-full mb-1 mx-auto border-2 border-indigo-900 shadow">
+          <div id="selfiePlaceholder" class="py-2">
+            <i class="fa-solid fa-camera text-indigo-900 text-2xl mb-1"></i>
+            <p class="text-xs font-bold text-slate-800">1. सेल्फ़ी लें (Tap Camera)</p>
+            <span class="text-[10px] text-slate-500">स्टोर में खड़े होकर फ़्रंट कैमरा खोलें</span>
+          </div>
+        </div>
+
+        <button onclick="recordGpsAttendance('Check-In')" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer">
+          <i class="fa-solid fa-circle-check text-sm"></i> ✓ Check-In दर्ज करें
+        </button>
+        <p id="geoMsg" class="text-[11px] text-slate-500 font-medium text-center"></p>
+      </div>
+
+      <!-- LOCKED NOTICE -->
+      <div id="staffSalesLockedNotice" class="p-6 bg-slate-100 border-2 border-dashed border-slate-300 rounded-2xl text-center space-y-1.5">
+        <i class="fa-solid fa-lock text-2xl text-slate-400 mb-1"></i>
+        <p class="text-xs font-bold text-slate-700">सेल्स एंट्री अभी लॉक है</p>
+        <p class="text-[11px] text-slate-500">ऊपर सेल्फ़ी लेकर Check-In करने के बाद ही आप प्रोडक्ट भेज पाएँगे।</p>
+      </div>
+
+      <!-- MULTI-ITEM CART (BATCH ENTRY) -->
+      <div id="staffSalesEntryArea" style="display: none;" class="space-y-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-plus-circle text-indigo-900"></i> ग्राहक आइटम फोटो एंट्री
+          </h3>
+          
+          <div class="border-2 border-dashed border-indigo-200 rounded-xl p-3 text-center bg-indigo-50/40 relative hover:border-indigo-500 transition">
+            <input type="file" id="tagPicInput" accept="image/*" capture="environment" onchange="compressAndPreviewTag(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10">
+            <img id="tagPreview" style="display: none;" class="w-full h-32 object-cover rounded-lg mb-1 mx-auto shadow-sm">
+            <div id="tagPlaceholder" class="py-3">
+              <i class="fa-solid fa-camera text-indigo-900 text-2xl mb-1"></i>
+              <p class="text-xs font-bold text-slate-800">टैग / बारकोड की फोटो लें</p>
+              <span class="text-[10px] text-slate-500">रेट टैग स्पष्ट दिखना चाहिए</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <select id="staffItemCategory" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold"></select>
+            <input id="staffItemQty" type="number" value="1" min="1" placeholder="कुल पीस (Qty)" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none">
+          </div>
+
+          <input id="staffItemNote" type="text" placeholder="आइटम विवरण / पहचान (वैकल्पिक)" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none">
+
+          <button onclick="addItemToBatch()" class="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 border border-indigo-200 active:scale-95 font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-cart-plus"></i> + लिस्ट में जोड़ें (Add to List)
+          </button>
+        </div>
+
+        <!-- CURRENT BATCH / CART LIST -->
+        <div id="batchCartContainer" class="bg-indigo-50/80 p-4 rounded-2xl border border-indigo-200 shadow-sm" style="display: none;">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-xs font-black uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-basket-shopping text-indigo-700"></i> ग्राहक की चुनी हुई लिस्ट (<span id="batchCount">0</span>)
+            </h3>
+            <button onclick="clearCurrentBatch()" class="text-[10px] text-rose-600 font-bold hover:underline cursor-pointer">✕ खाली करें</button>
+          </div>
+
+          <div id="batchItemsFeed" class="space-y-2 max-h-48 overflow-y-auto mb-3"></div>
+
+          <button onclick="submitBatchToCounter()" class="w-full py-3 bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white font-black text-xs rounded-xl shadow-lg transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <i class="fa-solid fa-cloud-arrow-up"></i> ये सभी आइटम काउंटर पर भेजें (Send All)
+          </button>
+        </div>
+      </div>
+
+      <!-- Staff History -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">आपकी आज की एंट्रीज</h3>
+        <div id="staffSentLog" class="space-y-2 text-xs divide-y divide-slate-100 max-h-56 overflow-y-auto"></div>
+      </div>
+    </main>
+
+    <!-- ==================== OWNER VIEW ==================== -->
+    <main id="ownerView" style="display: none;" class="p-4 space-y-4 flex-1">
+      
+      <!-- Branch & Date Period Filter Card -->
+      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-code-branch text-indigo-900"></i> स्टोर शाखा:
+          </span>
+          <select id="ownerBranchFilter" onchange="renderLocalData()" class="p-1.5 px-3 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-indigo-950 outline-none"></select>
+        </div>
+
+        <div class="pt-2 border-t border-slate-100 space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <i class="fa-regular fa-calendar-days text-indigo-900"></i> तारीख अवधि (Period):
+            </span>
+            <button onclick="clearDateFilter()" class="py-1 px-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-bold cursor-pointer">
+              ✕ Reset (All)
+            </button>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 block mb-0.5">कब से (From):</label>
+              <input id="ownerDateFrom" type="date" onchange="renderLocalData()" class="w-full p-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-indigo-950 outline-none">
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 block mb-0.5">कब तक (To):</label>
+              <input id="ownerDateTo" type="date" onchange="renderLocalData()" class="w-full p-1.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-indigo-950 outline-none">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Summary -->
+      <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 rounded-2xl shadow-lg border border-slate-800">
+        <div class="flex justify-between items-center">
+          <span class="text-[11px] uppercase font-bold text-indigo-200 tracking-wider">कुल स्वीकृत बिक्री पीस</span>
+          <span id="cardBranchLabel" class="text-[10px] bg-indigo-900/80 px-2 py-0.5 rounded-full font-bold">All Stores</span>
+        </div>
+        <div class="flex items-baseline gap-2 mt-1">
+          <h1 id="ownerTotalPieces" class="text-3xl font-black">0</h1>
+          <span class="text-xs text-indigo-200 font-bold">Pieces (₹<span id="ownerTotalRevenue">0</span>)</span>
+        </div>
+        <div class="flex justify-between items-center text-xs text-indigo-200/80 mt-3 pt-3 border-t border-indigo-800/60 font-medium">
+          <span>स्वीकृत बिल: <strong id="ownerTotalBills" class="text-white">0</strong></span>
+          <span>पेंडिंग बिल: <strong id="ownerPendingCount" class="text-amber-300 font-black">0</strong></span>
+        </div>
+      </div>
+
+      <!-- MASTER SALES REPORT BUTTON -->
+      <button onclick="showMasterSalesTable()" class="w-full py-3.5 bg-indigo-900 hover:bg-indigo-800 active:scale-95 text-white font-black text-xs rounded-2xl shadow-md border border-indigo-700 flex items-center justify-center gap-2 cursor-pointer transition">
+        <i class="fa-solid fa-table-list text-base text-amber-400"></i> सभी स्वीकृत बिलों की मास्टर लिस्ट (Full Table)
+      </button>
+
+      <!-- PENDING ATTENDANCE APPROVALS -->
+      <div id="pendingAttendanceSection" class="bg-emerald-50/90 p-4 rounded-2xl border border-emerald-300 shadow-sm" style="display: none;">
+        <div class="flex justify-between items-center mb-2.5">
+          <div>
+            <h3 class="text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-user-check text-emerald-700"></i> पेंडिंग हाजिरी अप्रूवल (Check-In)
+            </h3>
+            <p class="text-[10px] text-slate-500 mt-0.5">स्टाफ की सेल्फ़ी व समय देखकर हाजिरी पास करें</p>
+          </div>
+          <span id="pendingAttBadge" class="text-[10px] bg-emerald-200 text-emerald-900 font-black px-2 py-0.5 rounded-full">0 Staff</span>
+        </div>
+        <div id="pendingAttendanceFeed" class="space-y-2.5 text-xs"></div>
+      </div>
+
+      <!-- PENDING BILL APPROVAL QUEUE -->
+      <div class="bg-amber-50/90 p-4 rounded-2xl border border-amber-300 shadow-sm">
+        <div class="flex justify-between items-center mb-2.5">
+          <div>
+            <h3 class="text-xs font-black uppercase tracking-wider text-amber-950 flex items-center gap-1.5">
+              <i class="fa-solid fa-bell text-amber-700"></i> पेंडिंग बिल अप्रूवल लिस्ट
+            </h3>
+            <p class="text-[10px] text-slate-500 mt-0.5">टैग फ़ोटो चेक करें, बिल नं. व राशि डालकर पास करें</p>
+          </div>
+          <span id="pendingQueueBadge" class="text-[10px] bg-amber-200 text-amber-900 font-black px-2 py-0.5 rounded-full">0 Pending</span>
+        </div>
+        <div id="counterQueueFeed" class="space-y-3 max-h-[500px] overflow-y-auto text-xs pt-1"></div>
+      </div>
+
+      <!-- Piece Commission & Target Dashboard -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div onclick="toggleSection('secCommission', 'iconComm')" class="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition">
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <i class="fa-solid fa-trophy text-amber-500"></i> स्टाफ टारगेट व कमीशन रिपोर्ट
+            </h3>
+            <p class="text-[10px] text-slate-400 mt-0.5">विस्तृत रिपोर्ट देखने के लिए किसी भी स्टाफ पर टैप करें</p>
+          </div>
+          <i id="iconComm" class="fa-solid fa-chevron-up text-xs text-indigo-900 transition-transform"></i>
+        </div>
+        <div id="secCommission" style="display: block;" class="p-4 pt-0 border-t border-slate-100">
+          <div id="ownerCommissionFeed" class="space-y-2.5 max-h-56 overflow-y-auto text-xs mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Attendance Feed (History) -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div onclick="toggleSection('secAttendance', 'iconAtt')" class="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-location-dot text-rose-500"></i> स्वीकृत हाजिरी रिकॉर्ड (Attendance Log)
+          </h3>
+          <i id="iconAtt" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+        </div>
+        <div id="secAttendance" style="display: none;" class="p-4 pt-0 border-t border-slate-100">
+          <div id="ownerAttendanceFeed" class="space-y-2.5 max-h-64 overflow-y-auto text-xs mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Registered Staff & Management -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div onclick="toggleSection('secEmployees', 'iconEmp')" class="p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-users text-indigo-900"></i> पंजीकृत कर्मचारी प्रबंधन
+          </h3>
+          <i id="iconEmp" class="fa-solid fa-chevron-up text-xs text-indigo-900 transition-transform"></i>
+        </div>
+        <div id="secEmployees" style="display: block;" class="p-4 pt-0 border-t border-slate-100">
+          <div id="ownerEmployeeList" class="space-y-2 max-h-56 overflow-y-auto text-xs mt-3"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Detailed Report/Master Table Modal -->
+  <div id="reportModal" style="display: none;" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-start justify-center p-4 overflow-y-auto" onclick="closeReportModal()">
+    <div class="bg-white w-full max-w-xl rounded-3xl p-5 shadow-2xl space-y-4 mt-6" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+        <h3 id="reportModalTitle" class="font-black text-sm text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-receipt text-indigo-900"></i> रिपोर्ट
+        </h3>
+        <button onclick="closeReportModal()" class="text-slate-400 hover:text-slate-700 text-lg cursor-pointer">✕</button>
+      </div>
+      
+      <div id="reportContent" class="overflow-x-auto text-xs"></div>
+
+      <button onclick="closeReportModal()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow cursor-pointer">
+        बंद करें (Close)
+      </button>
+    </div>
+  </div>
+
+  <!-- Image Modal -->
+  <div id="imageModal" style="display: none;" class="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4" onclick="closeImageModal()">
+    <img id="modalImg" class="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl">
+  </div>
+
+  <!-- ==================== JAVASCRIPT LOGIC ==================== -->
+  <script>
+    var db = null;
+    var currentCompanyCode = localStorage.getItem('rd_company_code') || '';
+    var currentUser = null;
+    var currentRole = null;
+    var currentEmpId = null;
+    var currentBranch = "Main Store";
+
+    var currentTagPicData = "";
+    var attendanceSelfieData = "";
+    var currentBatchItems = [];
+
+    // Master Passcode to open Super Admin Dashboard
+    var SUPER_ADMIN_SECRET = "SUPER777";
+
+    window.addEventListener('DOMContentLoaded', function() {
+      var savedComp = localStorage.getItem('rd_company_code');
+      if (savedComp && document.getElementById('loginCompanyCode')) {
+        document.getElementById('loginCompanyCode').value = savedComp;
+      }
+    });
+
+    try {
+      if (window.firebase) {
+        var firebaseConfig = {
+          apiKey: "AIzaSyAbG4megn6PQkrv_Uk-G33iu9n6hr8igrs",
+          authDomain: "fcemployeepro.firebaseapp.com",
+          projectId: "fcemployeepro",
+          storageBucket: "fcemployeepro.firebasestorage.app",
+          messagingSenderId: "630224475871",
+          appId: "1:630224475871:web:7d8f684f3476906bb5fb6a"
+        };
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+      }
+    } catch (e) {
+      console.warn("Firebase Init", e);
+    }
+
+    function getCompanyCollection(collName) {
+      if (!db) return null;
+      var cCode = currentCompanyCode || 'DEFAULT';
+      return db.collection("companies").doc(cCode).collection(collName);
+    }
+
+    var defaultCategories = [
+      { name: "आइटम 1 (Item 1)", rate: 50 },
+      { name: "आइटम 2 (Item 2)", rate: 40 },
+      { name: "आइटम 3 (Item 3)", rate: 20 },
+      { name: "अन्य (General)", rate: 15 }
+    ];
+
+    var defaultBranches = [
+      { name: "Main Store", lat: 0, lng: 0, radius: 150 },
+      { name: "Branch 2", lat: 0, lng: 0, radius: 150 }
+    ];
+
+    var LocalDB = {
+      getKeyPrefix: function() {
+        return 'rd_' + (currentCompanyCode || 'DEFAULT') + '_';
+      },
+      get: function(k) {
+        try { 
+          var val = localStorage.getItem(this.getKeyPrefix() + k);
+          return val ? JSON.parse(val) : []; 
+        } catch(e) { return []; }
+      },
+      set: function(k, v) {
+        try { localStorage.setItem(this.getKeyPrefix() + k, JSON.stringify(v)); } catch(e) {}
+      },
+      getMasterPin: function() {
+        return localStorage.getItem(this.getKeyPrefix() + 'master_pin') || '123456';
+      },
+      setMasterPin: function(p) {
+        localStorage.setItem(this.getKeyPrefix() + 'master_pin', p);
+      },
+      getCategories: function() {
+        try {
+          var c = localStorage.getItem(this.getKeyPrefix() + 'categories');
+          return c ? JSON.parse(c) : defaultCategories;
+        } catch(e) { return defaultCategories; }
+      },
+      setCategories: function(c) {
+        localStorage.setItem(this.getKeyPrefix() + 'categories', JSON.stringify(c));
+      },
+      getBranches: function() {
+        try {
+          var b = localStorage.getItem(this.getKeyPrefix() + 'branches');
+          return b ? JSON.parse(b) : defaultBranches;
+        } catch(e) { return defaultBranches; }
+      },
+      setBranches: function(b) {
+        localStorage.setItem(this.getKeyPrefix() + 'branches', JSON.stringify(b));
+      }
+    };
+
+    // ==================== SUPER ADMIN LOGIC ====================
+    function triggerSuperAdminPrompt() {
+      var pass = prompt("🔐 सुपर एडमिन मास्टर पासवर्ड दर्ज करें:");
+      if (pass === SUPER_ADMIN_SECRET) {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('superAdminScreen').style.display = 'block';
+        loadSuperAdminStores();
+      } else if (pass !== null) {
+        alert("❌ गलत पासवर्ड!");
+      }
+    }
+
+    function exitSuperAdmin() {
+      document.getElementById('superAdminScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+
+    function registerNewStore() {
+      var code = document.getElementById('saStoreCode').value.trim().toUpperCase();
+      var name = document.getElementById('saStoreName').value.trim();
+      var pin = document.getElementById('saMasterPin').value.trim();
+      var validTill = document.getElementById('saValidTill').value;
+
+      if (!code || !name || pin.length !== 6 || !validTill) {
+        alert("कृपया सभी विवरण भरें (पिन 6 अंकों का होना चाहिए)!");
+        return;
+      }
+
+      var storeData = {
+        code: code,
+        name: name,
+        masterPin: pin,
+        validTill: validTill,
+        status: 'active',
+        createdAt: new Date().toISOString()
+      };
+
+      if (db) {
+        db.collection("stores_registry").doc(code).set(storeData).then(function() {
+          alert("✓ स्टोर " + code + " सफलता से पंजीकृत हुआ!");
+          document.getElementById('saStoreCode').value = '';
+          document.getElementById('saStoreName').value = '';
+          loadSuperAdminStores();
+        }).catch(function(err) { alert("Error: " + err.message); });
+      }
+    }
+
+    function loadSuperAdminStores() {
+      if (!db) return;
+      var listEl = document.getElementById('saStoreList');
+      var countEl = document.getElementById('saStoreCount');
+      listEl.innerHTML = '<p class="text-slate-500">लोड हो रहा है...</p>';
+
+      db.collection("stores_registry").get().then(function(snap) {
+        var stores = [];
+        snap.forEach(function(doc) { stores.push(doc.data()); });
+        countEl.innerText = stores.length;
+
+        if (stores.length === 0) {
+          listEl.innerHTML = '<p class="text-slate-500 text-center py-4">कोई स्टोर पंजीकृत नहीं है</p>';
+          return;
+        }
+
+        var todayIso = new Date().toISOString().split('T')[0];
+        var html = '';
+        stores.forEach(function(st) {
+          var isExpired = st.validTill < todayIso;
+          var statusBadge = isExpired 
+            ? '<span class="px-2 py-0.5 bg-rose-900/60 text-rose-300 rounded font-black text-[10px]">EXPIRED</span>' 
+            : '<span class="px-2 py-0.5 bg-emerald-900/60 text-emerald-300 rounded font-black text-[10px]">ACTIVE</span>';
+
+          html += '<div class="p-3 bg-slate-800/80 border border-slate-700 rounded-xl space-y-1.5">' +
+            '<div class="flex justify-between items-start">' +
+              '<div>' +
+                '<strong class="text-white font-mono text-sm tracking-wider">' + st.code + '</strong> - ' +
+                '<span class="text-slate-300">' + st.name + '</span>' +
+              '</div>' +
+              statusBadge +
+            '</div>' +
+            '<div class="flex justify-between items-center text-[10px] text-slate-400">' +
+              '<span>मास्टर पिन: <strong class="text-amber-300 font-mono">' + st.masterPin + '</strong></span>' +
+              '<span>वैधता: <strong class="' + (isExpired ? 'text-rose-400' : 'text-emerald-400') + '">' + st.validTill + '</strong></span>' +
+            '</div>' +
+            '<div class="flex gap-2 pt-1 border-t border-slate-700/60">' +
+              '<button onclick="renewStoreLicense(\'' + st.code + '\')" class="flex-1 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold cursor-pointer">तारीख बढ़ाएं (Renew)</button>' +
+              '<button onclick="deleteStoreLicense(\'' + st.code + '\')" class="py-1 px-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer">हटाएं</button>' +
+            '</div>' +
+          '</div>';
+        });
+        listEl.innerHTML = html;
+      });
+    }
+
+    function renewStoreLicense(code) {
+      var newDate = prompt("नयी समाप्ति तारीख (YYYY-MM-DD) दर्ज करें:");
+      if (!newDate) return;
+      db.collection("stores_registry").doc(code).update({ validTill: newDate }).then(function() {
+        alert("✓ लाइसेंस रिन्यू हुआ!");
+        loadSuperAdminStores();
+      });
+    }
+
+    function deleteStoreLicense(code) {
+      if (!confirm("क्या आप वाकई " + code + " का लाइसेंस हटाना चाहते हैं?")) return;
+      db.collection("stores_registry").doc(code).delete().then(function() {
+        alert("✓ हटाया गया!");
+        loadSuperAdminStores();
+      });
+    }
+
+    function backToLoginFromLock() {
+      document.getElementById('subscriptionLockScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+
+    // ==================== DYNAMIC CATEGORY MANAGER ====================
+    function renderCategoryManagerUI() {
+      var categories = LocalDB.getCategories();
+      var mgrList = document.getElementById('categoryManagerList');
+      var staffDropdown = document.getElementById('staffItemCategory');
+
+      if (staffDropdown) {
+        staffDropdown.innerHTML = categories.map(function(c) {
+          return '<option value="' + c.name + '">' + c.name + ' (₹' + c.rate + '/Pc)</option>';
+        }).join('');
+      }
+
+      if (mgrList) {
+        mgrList.innerHTML = categories.map(function(c, idx) {
+          return '<div class="flex justify-between items-center p-1.5 bg-white border border-slate-200 rounded-lg text-xs">' +
+            '<span><strong>' + c.name + '</strong> (₹' + c.rate + '/Pc)</span>' +
+            '<button onclick="removeCategory(' + idx + ')" class="text-rose-600 hover:bg-rose-50 px-1.5 py-0.5 rounded font-bold cursor-pointer">✕</button>' +
+          '</div>';
+        }).join('');
+      }
+    }
+
+    function addNewCategory() {
+      var name = document.getElementById('newCatName').value.trim();
+      var rate = parseFloat(document.getElementById('newCatRate').value) || 0;
+      if (!name) { alert("आइटम का नाम लिखें!"); return; }
+
+      var categories = LocalDB.getCategories();
+      categories.push({ name: name, rate: rate });
+      LocalDB.setCategories(categories);
+
+      var setCol = getCompanyCollection("settings");
+      if (setCol) setCol.doc("categories_list").set({ list: categories });
+
+      document.getElementById('newCatName').value = '';
+      document.getElementById('newCatRate').value = '';
+      renderCategoryManagerUI();
+      alert("✓ नया आइटम जोड़ा गया!");
+    }
+
+    function removeCategory(idx) {
+      var categories = LocalDB.getCategories();
+      categories.splice(idx, 1);
+      LocalDB.setCategories(categories);
+
+      var setCol = getCompanyCollection("settings");
+      if (setCol) setCol.doc("categories_list").set({ list: categories });
+
+      renderCategoryManagerUI();
+    }
+
+    // ==================== LOGIN CHECKS WITH SUBSCRIPTION VALIDATION ====================
+    function validateSubscription(companyCode, callback) {
+      if (!db) { callback(true); return; }
+
+      db.collection("stores_registry").doc(companyCode).get().then(function(doc) {
+        if (!doc.exists) {
+          callback(true);
+          return;
+        }
+        var data = doc.data();
+        var todayIso = new Date().toISOString().split('T')[0];
+
+        if (data.validTill && data.validTill < todayIso) {
+          document.getElementById('loginScreen').style.display = 'none';
+          document.getElementById('subscriptionLockScreen').style.display = 'flex';
+          document.getElementById('expiredStoreCodeText').innerText = companyCode;
+          callback(false);
+        } else {
+          if (data.masterPin) LocalDB.setMasterPin(data.masterPin);
+          callback(true);
+        }
+      }).catch(function() {
+        callback(true);
+      });
+    }
+
+    function validateAndSetCompanyCode(callback) {
+      var compInput = document.getElementById('loginCompanyCode');
+      var code = compInput ? compInput.value.trim().toUpperCase() : '';
+      if (!code) {
+        alert("⚠️ कृपया स्टोर आईडी / कंपनी कोड दर्ज करें!");
+        return;
+      }
+      currentCompanyCode = code;
+      localStorage.setItem('rd_company_code', code);
+
+      validateSubscription(code, function(isValid) {
+        if (isValid && callback) callback();
+      });
+    }
+
+    function loginOwner() {
+      validateAndSetCompanyCode(function() {
+        var pinInput = document.getElementById('ownerPinInput');
+        var pin = pinInput ? pinInput.value.trim() : '';
+        if (pin !== LocalDB.getMasterPin()) {
+          alert("❌ गलत मास्टर पिन!");
+          return;
+        }
+        currentUser = (document.getElementById('ownerNameInput').value.trim()) || "Owner";
+        currentRole = 'owner';
+        currentBranch = "All";
+        launchApp();
+      });
+    }
+
+    function loginStaff() {
+      validateAndSetCompanyCode(function() {
+        var empId = document.getElementById('staffEmpId').value.trim().toUpperCase();
+        var pin = document.getElementById('staffPinInput').value.trim();
+        var employees = LocalDB.get('employees');
+        var emp = employees.find(function(e) { return (e.id && e.id.toUpperCase() === empId); });
+
+        if (!emp) { alert("कर्मचारी ID नहीं मिली! कृपया Admin से ID बनवाएं।"); return; }
+        if (emp.pin && emp.pin !== pin) { alert("❌ गलत पिन!"); return; }
+
+        currentUser = emp.name;
+        currentRole = 'staff';
+        currentEmpId = emp.id;
+        currentBranch = emp.branch || "Main Store";
+        launchApp();
+      });
+    }
+
+    function launchApp() {
+      autoMidnightCheckOutVerification();
+
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appContainer').style.display = 'flex';
+      document.getElementById('headerUserName').innerText = currentUser;
+      document.getElementById('userAvatar').innerText = currentUser.charAt(0).toUpperCase();
+      document.getElementById('headerRoleBadge').innerText = currentRole.toUpperCase();
+      document.getElementById('headerBranchBadge').innerText = currentBranch;
+      document.getElementById('headerCompanyBadge').innerText = currentCompanyCode;
+
+      if (currentRole === 'owner') {
+        document.getElementById('ownerView').style.display = 'block';
+        document.getElementById('staffView').style.display = 'none';
+        document.getElementById('btnDotMenu').style.display = 'flex';
+        document.getElementById('btnStaffLogout').style.display = 'none';
+      } else {
+        document.getElementById('staffView').style.display = 'block';
+        document.getElementById('ownerView').style.display = 'none';
+        document.getElementById('staffBranchName').innerText = currentBranch;
+        document.getElementById('btnDotMenu').style.display = 'none';
+        document.getElementById('btnStaffLogout').style.display = 'flex';
+      }
+
+      renderCategoryManagerUI();
+      startRealtimeCloudSync();
+    }
+
+    function autoMidnightCheckOutVerification() {
+      var attendance = LocalDB.get('attendance');
+      if (!attendance || attendance.length === 0) return;
+
+      var todayIso = new Date().toISOString().split('T')[0];
+      var employees = LocalDB.get('employees');
+      var updated = false;
+
+      employees.forEach(function(emp) {
+        var empAtt = attendance.filter(function(a) { return a && (a.empId === emp.id || a.user === emp.name); });
+        if (empAtt.length > 0) {
+          var lastRecord = empAtt[0];
+          
+          if (lastRecord.type === 'Check-In' && lastRecord.isoDate && lastRecord.isoDate < todayIso) {
+            var autoId = "ATT_AUTO_" + Date.now() + "_" + emp.id;
+            var autoRecord = {
+              id: autoId,
+              user: emp.name,
+              empId: emp.id,
+              branch: emp.branch || 'Main Store',
+              type: 'Check-Out (Auto Night Close)',
+              time: '11:59:59 PM',
+              date: lastRecord.date,
+              isoDate: lastRecord.isoDate,
+              selfie: '',
+              location: 'System Midnight Override',
+              mapLink: '',
+              status: 'approved',
+              timestamp: (lastRecord.timestamp || Date.now()) + 1000
+            };
+
+            attendance.unshift(autoRecord);
+            var attCol = getCompanyCollection("attendance");
+            if (attCol) attCol.doc(autoId).set(autoRecord);
+            updated = true;
+          }
+        }
+      });
+
+      if (updated) {
+        LocalDB.set('attendance', attendance);
+      }
+    }
+
+    function toggleDotMenu() {
+      var modal = document.getElementById('dotMenuModal');
+      if (!modal) return;
+      modal.style.display = modal.style.display === 'none' ? 'flex' : 'none';
+    }
+
+    function closeDotMenuOnBackdrop(e) {
+      document.getElementById('dotMenuModal').style.display = 'none';
+    }
+
+    function toggleSection(secId, iconId) {
+      var sec = document.getElementById(secId);
+      var icon = document.getElementById(iconId);
+      if (!sec) return;
+
+      if (sec.style.display === 'none') {
+        sec.style.display = 'block';
+        if (icon) icon.className = "fa-solid fa-chevron-up text-xs text-indigo-900 transition-transform";
+      } else {
+        sec.style.display = 'none';
+        if (icon) icon.className = "fa-solid fa-chevron-down text-xs text-slate-400 transition-transform";
+      }
+    }
+
+    function switchLoginTab(type) {
+      var staffForm = document.getElementById('staffLoginForm');
+      var ownerForm = document.getElementById('ownerLoginForm');
+      var btnStaff = document.getElementById('tabStaff');
+      var btnOwner = document.getElementById('tabOwner');
+
+      if (!staffForm || !ownerForm) return;
+
+      if (type === 'staff') {
+        staffForm.style.display = 'block';
+        ownerForm.style.display = 'none';
+        btnStaff.className = "flex-1 py-2.5 text-xs font-bold rounded-lg bg-white shadow-sm text-indigo-950 transition cursor-pointer";
+        btnOwner.className = "flex-1 py-2.5 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition cursor-pointer";
+      } else {
+        ownerForm.style.display = 'block';
+        staffForm.style.display = 'none';
+        btnOwner.className = "flex-1 py-2.5 text-xs font-bold rounded-lg bg-white shadow-sm text-slate-900 transition cursor-pointer";
+        btnStaff.className = "flex-1 py-2.5 text-xs font-bold rounded-lg text-slate-500 hover:text-slate-800 transition cursor-pointer";
+      }
+    }
+
+    function clearDateFilter() {
+      var dFrom = document.getElementById('ownerDateFrom');
+      var dTo = document.getElementById('ownerDateTo');
+      if (dFrom) dFrom.value = '';
+      if (dTo) dTo.value = '';
+      renderLocalData();
+    }
+
+    function compressAndPreviewTag(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.src = e.target.result;
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          var maxDimension = 400;
+          var width = img.width;
+          var height = img.height;
+
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          var compressed = canvas.toDataURL('image/jpeg', 0.4);
+          currentTagPicData = compressed;
+
+          var prevEl = document.getElementById('tagPreview');
+          var placeEl = document.getElementById('tagPlaceholder');
+          if (prevEl) {
+            prevEl.src = compressed;
+            prevEl.style.display = 'block';
+          }
+          if (placeEl) placeEl.style.display = 'none';
+        };
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function compressAttendanceSelfie(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = new Image();
+        img.src = e.target.result;
+        img.onload = function() {
+          var canvas = document.createElement('canvas');
+          var maxDimension = 300;
+          var width = img.width;
+          var height = img.height;
+
+          if (width > height) {
+            if (width > maxDimension) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          var compressed = canvas.toDataURL('image/jpeg', 0.4);
+          attendanceSelfieData = compressed;
+
+          var prevEl = document.getElementById('attendanceSelfiePreview');
+          var placeEl = document.getElementById('selfiePlaceholder');
+          if (prevEl) {
+            prevEl.src = compressed;
+            prevEl.style.display = 'block';
+          }
+          if (placeEl) placeEl.style.display = 'none';
+        };
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function recordGpsAttendance(type) {
+      if (type === 'Check-In' && !attendanceSelfieData) {
+        alert("⚠️ कृपया पहले सेल्फ़ी लें!");
+        return;
+      }
+
+      var exactTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var exactDate = new Date().toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      var isoDate = new Date().toISOString().split('T')[0];
+
+      var geoMsg = document.getElementById('geoMsg');
+      if (geoMsg) {
+        geoMsg.innerText = "📍 हाजिरी दर्ज की जा रही है...";
+        geoMsg.className = "text-[11px] text-indigo-600 font-bold text-center";
+      }
+
+      if (!navigator.geolocation) {
+        saveAttendanceRecord(type, "GPS Not Supported", "", exactTime, exactDate, isoDate);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          var lat = position.coords.latitude;
+          var lng = position.coords.longitude;
+          var mapLink = "https://www.google.com/maps?q=" + lat + "," + lng;
+          var locStr = lat.toFixed(5) + ", " + lng.toFixed(5);
+
+          saveAttendanceRecord(type, locStr, mapLink, exactTime, exactDate, isoDate);
+        },
+        function(error) {
+          saveAttendanceRecord(type, "Location Off", "", exactTime, exactDate, isoDate);
+        },
+        { timeout: 8000, enableHighAccuracy: true }
+      );
+    }
+
+    function saveAttendanceRecord(type, locationStr, mapLink, exactTime, exactDate, isoDate) {
+      var attId = "ATT_" + Date.now();
+
+      var record = {
+        id: attId,
+        user: currentUser,
+        empId: currentEmpId,
+        branch: currentBranch,
+        type: type,
+        time: exactTime,
+        date: exactDate,
+        isoDate: isoDate,
+        selfie: attendanceSelfieData,
+        location: locationStr,
+        mapLink: mapLink,
+        status: (type === 'Check-In' ? 'pending_approval' : 'approved'),
+        timestamp: Date.now()
+      };
+
+      var attCol = getCompanyCollection("attendance");
+      if (attCol) {
+        attCol.doc(attId).set(record).catch(function(err) {
+          console.error("Attendance Error:", err);
+        });
+      }
+
+      var local = LocalDB.get('attendance');
+      local.unshift(record);
+      LocalDB.set('attendance', local);
+
+      attendanceSelfieData = "";
+      var prevEl = document.getElementById('attendanceSelfiePreview');
+      var placeEl = document.getElementById('selfiePlaceholder');
+      if (prevEl) prevEl.style.display = 'none';
+      if (placeEl) placeEl.style.display = 'block';
+
+      alert("✓ " + type + " दर्ज हुआ!\nसमय: " + exactTime);
+      renderLocalData();
+    }
+
+    function approveAttendance(attId) {
+      var attendance = LocalDB.get('attendance');
+      var att = attendance.find(function(a) { return String(a.id) === String(attId); });
+      if (att) {
+        att.status = 'approved';
+        LocalDB.set('attendance', attendance);
+        var attCol = getCompanyCollection("attendance");
+        if (attCol) attCol.doc(String(attId)).update({ status: 'approved' });
+      }
+      alert("✓ हाजिरी स्वीकृत (Approved) हो गई!");
+      renderLocalData();
+    }
+
+    function rejectAttendance(attId) {
+      if (!confirm("क्या आप इस हाजिरी को रिजेक्ट करना चाहते हैं?")) return;
+      var attendance = LocalDB.get('attendance');
+      var att = attendance.find(function(a) { return String(a.id) === String(attId); });
+      if (att) {
+        att.status = 'rejected';
+        LocalDB.set('attendance', attendance);
+        var attCol = getCompanyCollection("attendance");
+        if (attCol) attCol.doc(String(attId)).update({ status: 'rejected' });
+      }
+      renderLocalData();
+    }
+
+    function forceCheckOutStaff(empId, empName) {
+      if (!confirm(empName + " को Force Check-Out करना चाहते हैं?")) return;
+      var exactTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var exactDate = new Date().toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      var isoDate = new Date().toISOString().split('T')[0];
+      var attId = "ATT_" + Date.now();
+
+      var record = {
+        id: attId,
+        user: empName,
+        empId: empId,
+        branch: currentBranch,
+        type: 'Check-Out (By Admin)',
+        time: exactTime,
+        date: exactDate,
+        isoDate: isoDate,
+        selfie: '',
+        location: 'Admin Override',
+        mapLink: '',
+        status: 'approved',
+        timestamp: Date.now()
+      };
+
+      var attCol = getCompanyCollection("attendance");
+      if (attCol) attCol.doc(attId).set(record);
+      var local = LocalDB.get('attendance');
+      local.unshift(record);
+      LocalDB.set('attendance', local);
+      alert("✓ " + empName + " को Check-Out कर दिया गया!");
+      renderLocalData();
+    }
+
+    function addItemToBatch() {
+      if (!currentTagPicData) {
+        alert("⚠️ कृपया पहले आइटम / टैग की फ़ोटो लें!");
+        return;
+      }
+
+      var category = document.getElementById('staffItemCategory').value;
+      var qty = parseInt(document.getElementById('staffItemQty').value) || 1;
+      var note = document.getElementById('staffItemNote').value.trim() || '-';
+
+      var itemObj = {
+        id: "TEMP_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+        category: category,
+        qty: qty,
+        note: note,
+        tagPic: currentTagPicData
+      };
+
+      currentBatchItems.push(itemObj);
+
+      currentTagPicData = "";
+      var tagPrev = document.getElementById('tagPreview');
+      var tagPlace = document.getElementById('tagPlaceholder');
+      if (tagPrev) tagPrev.style.display = 'none';
+      if (tagPlace) tagPlace.style.display = 'block';
+
+      document.getElementById('staffItemQty').value = '1';
+      document.getElementById('staffItemNote').value = '';
+
+      renderBatchCartUI();
+    }
+
+    function removeBatchItem(tempId) {
+      currentBatchItems = currentBatchItems.filter(function(it) { return it.id !== tempId; });
+      renderBatchCartUI();
+    }
+
+    function clearCurrentBatch() {
+      if (currentBatchItems.length === 0) return;
+      if (!confirm("क्या आप पूरी लिस्ट को खाली करना चाहते हैं?")) return;
+      currentBatchItems = [];
+      renderBatchCartUI();
+    }
+
+    function renderBatchCartUI() {
+      var cartContainer = document.getElementById('batchCartContainer');
+      var countEl = document.getElementById('batchCount');
+      var feed = document.getElementById('batchItemsFeed');
+
+      if (!cartContainer || !feed) return;
+
+      if (currentBatchItems.length === 0) {
+        cartContainer.style.display = 'none';
+        return;
+      }
+
+      cartContainer.style.display = 'block';
+      if (countEl) countEl.innerText = currentBatchItems.length + " आइटम";
+
+      var html = '';
+      for (var i = 0; i < currentBatchItems.length; i++) {
+        var it = currentBatchItems[i];
+        html += '<div class="flex justify-between items-center p-2 bg-white border border-indigo-100 rounded-xl shadow-xs">' +
+          '<div class="flex items-center space-x-2">' +
+            '<img src="' + it.tagPic + '" class="w-9 h-9 object-cover rounded-lg border border-slate-200">' +
+            '<div>' +
+              '<p class="font-bold text-slate-800 text-xs">' + (i + 1) + '. ' + it.category + ' (' + it.qty + ' Pc)</p>' +
+              '<p class="text-[10px] text-slate-400">' + it.note + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<button onclick="removeBatchItem(\'' + it.id + '\')" class="text-rose-600 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg text-xs cursor-pointer">✕</button>' +
+        '</div>';
+      }
+      feed.innerHTML = html;
+    }
+
+    function submitBatchToCounter() {
+      if (currentBatchItems.length === 0) return;
+
+      var batchId = "BATCH_" + Date.now();
+      var exactTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var exactDate = new Date().toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      var isoDate = new Date().toISOString().split('T')[0];
+      var sales = LocalDB.get('sales');
+      var salesCol = getCompanyCollection("sales");
+
+      for (var i = 0; i < currentBatchItems.length; i++) {
+        var item = currentBatchItems[i];
+        var itemId = "ITEM_" + Date.now() + "_" + i;
+
+        var counterItem = {
+          id: itemId,
+          batchId: batchId,
+          branch: currentBranch,
+          category: item.category,
+          qty: item.qty,
+          note: item.note,
+          tagPic: item.tagPic,
+          staff: currentUser,
+          empId: currentEmpId,
+          sentTime: exactTime,
+          date: exactDate,
+          isoDate: isoDate,
+          status: 'pending_counter',
+          amount: 0,
+          billNo: '',
+          payment: 'Cash',
+          commission: 0,
+          timestamp: Date.now() + i
+        };
+
+        if (salesCol) {
+          salesCol.doc(itemId).set(counterItem).catch(function(err) {
+            console.error("Cloud Error", err);
+          });
+        }
+
+        sales.unshift(counterItem);
+      }
+
+      LocalDB.set('sales', sales);
+      alert("✓ ग्राहक के सभी " + currentBatchItems.length + " आइटम काउंटर पर भेज दिए गए!");
+      
+      currentBatchItems = [];
+      renderBatchCartUI();
+      renderLocalData();
+    }
+
+    function finalizeCounterBill(itemId) {
+      var billNoInput = document.getElementById('billNo_' + itemId);
+      var amountInput = document.getElementById('amount_' + itemId);
+      var paymentInput = document.getElementById('payment_' + itemId);
+
+      var billNo = billNoInput ? billNoInput.value.trim() : '';
+      var amount = amountInput ? parseFloat(amountInput.value) || 0 : 0;
+      var payment = paymentInput ? paymentInput.value : 'Cash';
+
+      var sales = LocalDB.get('sales');
+      var item = sales.find(function(s) { return String(s.id) === String(itemId); });
+      if (!item) return;
+
+      var qty = item.qty || 1;
+      var categories = LocalDB.getCategories();
+      var matchedCat = categories.find(function(c) { return item.category && item.category.indexOf(c.name) !== -1; });
+      var ratePerPc = matchedCat ? (matchedCat.rate || 15) : 15;
+
+      var comm = qty * ratePerPc;
+      var billedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      item.billNo = billNo || 'Auto';
+      item.amount = amount;
+      item.payment = payment;
+      item.commission = comm;
+      item.status = 'billed';
+      item.billedTime = billedTime;
+
+      var salesCol = getCompanyCollection("sales");
+      if (salesCol) {
+        salesCol.doc(String(itemId)).update({
+          billNo: item.billNo, amount: amount, payment: payment, commission: comm,
+          status: 'billed', billedTime: billedTime
+        }).catch(function(err) { console.log(err); });
+      }
+
+      LocalDB.set('sales', sales);
+      alert("✓ बिल पास हुआ! (" + qty + " पीस | कमीशन: +₹" + comm + ")");
+      renderLocalData();
+    }
+
+    function rejectCounterItem(itemId) {
+      if (!confirm("क्या आप इस एंट्री को रिजेक्ट करना चाहते हैं?")) return;
+      var sales = LocalDB.get('sales');
+      var item = sales.find(function(s) { return String(s.id) === String(itemId); });
+      if (item) item.status = 'rejected';
+      LocalDB.set('sales', sales);
+      var salesCol = getCompanyCollection("sales");
+      if (salesCol) salesCol.doc(String(itemId)).update({ status: 'rejected' });
+      renderLocalData();
+    }
+
+    function showStaffTargetReport(empId) {
+      var employees = LocalDB.get('employees');
+      var emp = employees.find(function(e) { return e.id === empId; });
+      if (!emp) return;
+
+      var sales = LocalDB.get('sales');
+      var empSales = sales.filter(function(s) { return (s.status === 'billed' || s.status === 'approved') && (s.staff === emp.name || s.empId === emp.id); });
+
+      var totalPcs = empSales.reduce(function(acc, s) { return acc + (parseInt(s.qty) || 1); }, 0);
+      var totalComm = empSales.reduce(function(acc, s) { return acc + (parseFloat(s.commission) || 0); }, 0);
+      var totalAmt = empSales.reduce(function(acc, s) { return acc + (parseFloat(s.amount) || 0); }, 0);
+      var target = parseInt(emp.target) || 100;
+      var remaining = Math.max(0, target - totalPcs);
+      var pct = Math.min(100, Math.round((totalPcs / target) * 100));
+
+      document.getElementById('reportModalTitle').innerHTML = '<i class="fa-solid fa-user-check text-indigo-900"></i> ' + emp.name + ' का टारगेट रिपोर्ट';
+
+      var content = document.getElementById('reportContent');
+      content.innerHTML = 
+        '<div class="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl mb-2 space-y-1">' +
+          '<div class="flex justify-between"><span class="text-indigo-950 font-bold">मासिक टारगेट:</span> <strong class="text-indigo-900">' + target + ' Pieces</strong></div>' +
+          '<div class="flex justify-between"><span class="text-indigo-950 font-bold">पूरा हुआ (Sold):</span> <strong class="text-emerald-700">' + totalPcs + ' Pieces (' + pct + '%)</strong></div>' +
+          '<div class="flex justify-between"><span class="text-indigo-950 font-bold">बाकी (Remaining):</span> <strong class="text-rose-700">' + remaining + ' Pieces</strong></div>' +
+          '<div class="w-full bg-indigo-200 h-2 rounded-full overflow-hidden mt-2"><div class="bg-indigo-900 h-full rounded-full" style="width: ' + pct + '%"></div></div>' +
+        '</div>' +
+        '<div class="flex justify-between border-b border-slate-100 py-1.5"><span class="text-slate-500">कर्मचारी ID:</span> <span class="font-bold text-slate-800">' + emp.id + '</span></div>' +
+        '<div class="flex justify-between border-b border-slate-100 py-1.5"><span class="text-slate-500">स्टोर शाखा:</span> <span class="font-bold text-slate-800">' + (emp.branch || 'Main Store') + '</span></div>' +
+        '<div class="flex justify-between border-b border-slate-100 py-1.5"><span class="text-slate-500">स्वीकृत बिलों की संख्या:</span> <span class="font-bold text-slate-800">' + empSales.length + ' Bills</span></div>' +
+        '<div class="flex justify-between border-b border-slate-100 py-1.5"><span class="text-slate-500">कुल बिक्री राशि (₹):</span> <span class="font-black text-slate-900">₹' + totalAmt.toLocaleString() + '</span></div>' +
+        '<div class="flex justify-between bg-emerald-50 p-2.5 rounded-xl mt-2 border border-emerald-200"><span class="text-emerald-900 font-bold">कुल स्वीकृत कमीशन:</span> <span class="font-black text-emerald-800 text-sm">₹' + totalComm.toLocaleString() + '</span></div>';
+
+      document.getElementById('reportModal').style.display = 'flex';
+    }
+
+    function showMasterSalesTable() {
+      var sales = LocalDB.get('sales').filter(function(s) { return s.status === 'billed' || s.status === 'approved'; });
+      var branchFilter = document.getElementById('ownerBranchFilter');
+      var selectedBranch = branchFilter ? branchFilter.value : "All";
+      var dFrom = document.getElementById('ownerDateFrom') ? document.getElementById('ownerDateFrom').value : "";
+      var dTo = document.getElementById('ownerDateTo') ? document.getElementById('ownerDateTo').value : "";
+
+      if (selectedBranch && selectedBranch !== "All") {
+        sales = sales.filter(function(s) { return s.branch === selectedBranch; });
+      }
+
+      if (dFrom) {
+        sales = sales.filter(function(s) { return s.isoDate && s.isoDate >= dFrom; });
+      }
+      if (dTo) {
+        sales = sales.filter(function(s) { return s.isoDate && s.isoDate <= dTo; });
+      }
+
+      var totalAmt = sales.reduce(function(a, b) { return a + (parseFloat(b.amount) || 0); }, 0);
+      var totalPcs = sales.reduce(function(a, b) { return a + (parseInt(b.qty) || 1); }, 0);
+      var totalComm = sales.reduce(function(a, b) { return a + (parseFloat(b.commission) || 0); }, 0);
+
+      var periodText = (dFrom || dTo) ? " (" + (dFrom || 'Start') + " to " + (dTo || 'End') + ")" : "";
+      document.getElementById('reportModalTitle').innerHTML = '<i class="fa-solid fa-table-list text-indigo-900"></i> मास्टर सेल्स रिपोर्ट ' + periodText + ' (' + sales.length + ' Bills)';
+      
+      if (sales.length === 0) {
+        document.getElementById('reportContent').innerHTML = '<p class="text-center py-6 text-slate-400 font-medium">चुनी हुई अवधि/शाखा में कोई स्वीकृत बिल नहीं है।</p>';
+        document.getElementById('reportModal').style.display = 'flex';
+        return;
+      }
+
+      var tableHtml = `
+        <div class="mb-3 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl flex justify-between text-xs font-bold text-indigo-950">
+          <span>कुल पीस: ${totalPcs} Pc</span>
+          <span>कुल बिक्री: ₹${totalAmt.toLocaleString()}</span>
+          <span class="text-emerald-700">कमीशन: ₹${totalComm.toLocaleString()}</span>
+        </div>
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-100 text-[10px] text-slate-600 uppercase border-b border-slate-200">
+              <th class="p-2">तारीख/समय</th>
+              <th class="p-2">स्टाफ</th>
+              <th class="p-2">आइटम</th>
+              <th class="p-2 text-center">Pc</th>
+              <th class="p-2">बिल नं.</th>
+              <th class="p-2 text-right">राशि (₹)</th>
+              <th class="p-2 text-right">कमीशन</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-[11px]">
+            ${sales.map(s => `
+              <tr class="hover:bg-slate-50">
+                <td class="p-2 whitespace-nowrap"><strong class="text-slate-800">${s.date || '-'}</strong><br><span class="text-[9px] text-slate-400">${s.billedTime || s.sentTime || '-'}</span></td>
+                <td class="p-2 font-bold text-indigo-950 whitespace-nowrap">${s.staff || '-'}<br><span class="text-[9px] font-normal text-slate-400">${s.branch || ''}</span></td>
+                <td class="p-2 text-slate-800">${s.category || 'सामान'}</td>
+                <td class="p-2 text-center font-bold text-indigo-900">${s.qty || 1}</td>
+                <td class="p-2 font-mono text-slate-700">${s.billNo || 'Auto'}</td>
+                <td class="p-2 text-right font-black text-slate-900">₹${(s.amount || 0).toLocaleString()}</td>
+                <td class="p-2 text-right font-black text-emerald-700">+₹${(s.commission || 0).toLocaleString()}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      document.getElementById('reportContent').innerHTML = tableHtml;
+      document.getElementById('reportModal').style.display = 'flex';
+    }
+
+    function closeReportModal() {
+      document.getElementById('reportModal').style.display = 'none';
+    }
+
+    function renderLocalData() {
+      var sales = LocalDB.get('sales') || [];
+      var employees = LocalDB.get('employees') || [];
+      var attendance = LocalDB.get('attendance') || [];
+      var branches = LocalDB.getBranches() || defaultBranches;
+
+      var branchFilter = document.getElementById('ownerBranchFilter');
+      var selectedBranch = branchFilter ? branchFilter.value : "All";
+      var dFrom = document.getElementById('ownerDateFrom') ? document.getElementById('ownerDateFrom').value : "";
+      var dTo = document.getElementById('ownerDateTo') ? document.getElementById('ownerDateTo').value : "";
+
+      if (branchFilter && branchFilter.options.length === 0) {
+        branchFilter.innerHTML = '<option value="All">सभी शाखाएं (All)</option>' +
+          branches.map(function(b) { return '<option value="' + b.name + '">' + b.name + '</option>'; }).join('');
+      }
+
+      var empBranchSelect = document.getElementById('empNewBranchSelect');
+      if (empBranchSelect && empBranchSelect.options.length === 0) {
+        empBranchSelect.innerHTML = branches.map(function(b) { return '<option value="' + b.name + '">' + b.name + '</option>'; }).join('');
+      }
+
+      var filteredSales = sales;
+      var filteredEmp = employees;
+      var filteredAtt = attendance;
+
+      if (selectedBranch && selectedBranch !== "All") {
+        filteredSales = filteredSales.filter(function(s) { return s && s.branch === selectedBranch; });
+        filteredEmp = filteredEmp.filter(function(e) { return e && e.branch === selectedBranch; });
+        filteredAtt = filteredAtt.filter(function(a) { return a && a.branch === selectedBranch; });
+      }
+
+      if (dFrom) {
+        filteredSales = filteredSales.filter(function(s) { return s && s.isoDate && s.isoDate >= dFrom; });
+        filteredAtt = filteredAtt.filter(function(a) { return a && a.isoDate && a.isoDate >= dFrom; });
+      }
+      if (dTo) {
+        filteredSales = filteredSales.filter(function(s) { return s && s.isoDate && s.isoDate <= dTo; });
+        filteredAtt = filteredAtt.filter(function(a) { return a && a.isoDate && a.isoDate <= dTo; });
+      }
+
+      var cardBranchLabel = document.getElementById('cardBranchLabel');
+      if (cardBranchLabel) {
+        var pText = (dFrom || dTo) ? " | " + (dFrom || 'Start') + " to " + (dTo || 'End') : "";
+        cardBranchLabel.innerText = selectedBranch + pText;
+      }
+
+      // Staff View Data
+      try {
+        var myItems = sales.filter(function(s) { return s && (s.staff === currentUser || s.empId === currentEmpId); });
+        var myBilled = myItems.filter(function(s) { return s && (s.status === 'billed' || s.status === 'approved'); });
+        
+        var myTotalPieces = myBilled.reduce(function(acc, s) { return acc + (parseInt(s.qty) || 1); }, 0);
+        var myTotalComm = myBilled.reduce(function(acc, s) { return acc + (parseFloat(s.commission) || 0); }, 0);
+
+        var myEmpObj = employees.find(function(e) { return e.id === currentEmpId; });
+        var myTarget = myEmpObj ? (parseInt(myEmpObj.target) || 100) : 100;
+        var myProgress = Math.min(100, Math.round((myTotalPieces / myTarget) * 100));
+
+        var staffPiecesEl = document.getElementById('staffTotalPiecesVal');
+        if (staffPiecesEl) staffPiecesEl.innerText = myTotalPieces;
+
+        var staffTargetEl = document.getElementById('staffTargetPiecesVal');
+        if (staffTargetEl) staffTargetEl.innerText = myTarget;
+
+        var staffProgFill = document.getElementById('staffProgressFill');
+        if (staffProgFill) staffProgFill.style.width = myProgress + "%";
+        
+        var staffCommEl = document.getElementById('staffCommissionVal');
+        if (staffCommEl) staffCommEl.innerText = "₹" + myTotalComm.toLocaleString();
+
+        var myAttHistory = attendance.filter(function(a) { return a && (a.user === currentUser || a.empId === currentEmpId); });
+        var isCheckedIn = false;
+        var checkInTime = "";
+
+        if (myAttHistory.length > 0) {
+          var lastAtt = myAttHistory[0];
+          var todayIso = new Date().toISOString().split('T')[0];
+          if (lastAtt.type === 'Check-In' && (!lastAtt.isoDate || lastAtt.isoDate === todayIso)) {
+            isCheckedIn = true;
+            checkInTime = lastAtt.time || '';
+          }
+        }
+
+        var checkInCard = document.getElementById('staffCheckInCard');
+        var activeBar = document.getElementById('staffActiveDutyBar');
+        var salesArea = document.getElementById('staffSalesEntryArea');
+        var lockNotice = document.getElementById('staffSalesLockedNotice');
+        var dutyTimeText = document.getElementById('staffDutyStartTime');
+
+        if (isCheckedIn) {
+          if (checkInCard) checkInCard.style.display = 'none';
+          if (activeBar) activeBar.style.display = 'flex';
+          if (salesArea) salesArea.style.display = 'block';
+          if (lockNotice) lockNotice.style.display = 'none';
+          if (dutyTimeText) dutyTimeText.innerText = "चेक-इन समय: " + checkInTime;
+        } else {
+          if (checkInCard) checkInCard.style.display = 'block';
+          if (activeBar) activeBar.style.display = 'none';
+          if (salesArea) salesArea.style.display = 'none';
+          if (lockNotice) lockNotice.style.display = 'block';
+        }
+
+        var staffLogEl = document.getElementById('staffSentLog');
+        if (staffLogEl) {
+          if (myItems.length === 0) {
+            staffLogEl.innerHTML = '<p class="text-slate-400 text-center py-3">आज कोई एंट्री नहीं भेजी</p>';
+          } else {
+            var sHtml = '';
+            for (var i = 0; i < myItems.length; i++) {
+              var item = myItems[i];
+              var badge = '<span class="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">⏳ अप्रूवल पेंडिंग</span>';
+              if (item.status === 'billed' || item.status === 'approved') badge = '<span class="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">✓ स्वीकृत (' + (item.qty || 1) + ' Pc) • +₹' + (item.commission || 0) + '</span>';
+              if (item.status === 'rejected') badge = '<span class="text-[9px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded">✕ रिजेक्टेड</span>';
+
+              var tImg = item.tagPic ? '<img src="' + item.tagPic + '" onclick="openImageModal(this.src)" class="w-10 h-10 rounded-lg object-cover border border-slate-200 cursor-pointer shadow-sm">' : '';
+
+              sHtml += '<div class="flex justify-between items-center py-2.5">' +
+                '<div>' +
+                  '<div class="flex items-center gap-1.5">' +
+                    '<span class="font-bold text-slate-800">' + (item.category || 'सामान') + '</span>' +
+                    '<span class="text-[10px] text-indigo-900 font-bold">(' + (item.qty || 1) + ' Pc)</span>' +
+                    badge +
+                  '</div>' +
+                  '<p class="text-[10px] text-slate-400 mt-0.5">' + (item.date || '') + ' • ' + (item.sentTime || '') + '</p>' +
+                '</div>' +
+                '<div class="flex items-center gap-1.5">' + tImg + '</div>' +
+              '</div>';
+            }
+            staffLogEl.innerHTML = sHtml;
+          }
+        }
+      } catch(e) {}
+
+      // Pending Attendance
+      var pendingAttList = filteredAtt.filter(function(a) { return a && a.type === 'Check-In' && a.status === 'pending_approval'; });
+      var pendingAttSec = document.getElementById('pendingAttendanceSection');
+      var pendingAttFeed = document.getElementById('pendingAttendanceFeed');
+      var pendingAttBadge = document.getElementById('pendingAttBadge');
+
+      if (pendingAttSec && pendingAttFeed) {
+        if (pendingAttList.length > 0) {
+          pendingAttSec.style.display = 'block';
+          if (pendingAttBadge) pendingAttBadge.innerText = pendingAttList.length + " Request";
+
+          var aHtml = '';
+          for (var x = 0; x < pendingAttList.length; x++) {
+            var pa = pendingAttList[x];
+            var sImg = pa.selfie ? '<img src="' + pa.selfie + '" onclick="openImageModal(this.src)" class="w-12 h-12 rounded-xl object-cover border-2 border-emerald-600 cursor-pointer shadow">' : '<div class="w-12 h-12 rounded-xl bg-slate-200 flex items-center justify-center text-[10px]">No Pic</div>';
+            var mapBtn = pa.mapLink ? '<a href="' + pa.mapLink + '" target="_blank" class="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold hover:underline">📍 Map</a>' : '';
+
+            aHtml += '<div class="flex justify-between items-center p-2.5 bg-white border border-emerald-200 rounded-xl shadow-xs">' +
+              '<div class="flex items-center space-x-2.5">' +
+                sImg +
+                '<div>' +
+                  '<div class="flex items-center gap-1.5">' +
+                    '<span class="font-bold text-slate-900 text-xs">' + (pa.user || 'User') + '</span>' +
+                    '<span class="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">' + (pa.branch || 'Branch') + '</span>' +
+                  '</div>' +
+                  '<p class="text-[10px] text-slate-500 mt-0.5">⏰ चेक-इन समय: <strong class="text-slate-800">' + (pa.time || '') + '</strong></p>' +
+                  '<p class="text-[9px] text-slate-400">' + (pa.date || '') + ' ' + mapBtn + '</p>' +
+                '</div>' +
+              '</div>' +
+              '<div class="flex items-center gap-1.5">' +
+                '<button onclick="approveAttendance(\'' + pa.id + '\')" class="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer">✓ पास करें</button>' +
+                '<button onclick="rejectAttendance(\'' + pa.id + '\')" class="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs rounded-lg cursor-pointer">✕</button>' +
+              '</div>' +
+            '</div>';
+          }
+          pendingAttFeed.innerHTML = aHtml;
+        } else {
+          pendingAttSec.style.display = 'none';
+        }
+      }
+
+      // Owner Pending Sales & Summary
+      var pendingCounter = filteredSales.filter(function(s) { return s && (s.status === 'pending_counter' || s.status === 'pending' || !s.status); });
+      var billedSales = filteredSales.filter(function(s) { return s && (s.status === 'billed' || s.status === 'approved'); });
+      
+      var totalRev = billedSales.reduce(function(acc, s) { return acc + (parseFloat(s.amount) || 0); }, 0);
+      var totalPieces = billedSales.reduce(function(acc, s) { return acc + (parseInt(s.qty) || 1); }, 0);
+
+      var ownerPiecesEl = document.getElementById('ownerTotalPieces');
+      if (ownerPiecesEl) {
+        ownerPiecesEl.innerText = totalPieces;
+        document.getElementById('ownerTotalRevenue').innerText = totalRev.toLocaleString();
+        document.getElementById('ownerTotalBills').innerText = billedSales.length;
+        document.getElementById('ownerPendingCount').innerText = pendingCounter.length;
+        document.getElementById('pendingQueueBadge').innerText = pendingCounter.length + " Pending";
+      }
+
+      // Pending Bills Feed
+      try {
+        var counterFeed = document.getElementById('counterQueueFeed');
+        if (counterFeed) {
+          if (pendingCounter.length === 0) {
+            counterFeed.innerHTML = '<p class="text-slate-500 text-center py-3 font-medium">✨ कोई पेंडिंग बिल नहीं है!</p>';
+          } else {
+            var qHtml = '';
+            for (var k = 0; k < pendingCounter.length; k++) {
+              var s = pendingCounter[k];
+              var safeId = s.id || ('temp_' + k);
+              var cat = s.category || 'सामान';
+              var qty = s.qty || 1;
+              var stName = s.staff || 'Staff';
+              var stEmp = s.empId || 'EMP';
+              var sBranch = s.branch || 'Main Store';
+              var sTime = s.sentTime || s.time || '';
+              var sDate = s.date || '';
+              var sNote = s.note || '-';
+              var curBill = s.billNo || '';
+              var curAmt = (s.amount && s.amount > 0) ? s.amount : '';
+
+              var stAtt = attendance.find(function(a) { return a && (a.empId === stEmp || a.user === stName) && a.type === 'Check-In'; });
+              var attTimeStr = stAtt ? stAtt.time : '--:--';
+              var attSelfieHtml = (stAtt && stAtt.selfie) ? '<img src="' + stAtt.selfie + '" onclick="openImageModal(this.src)" class="w-8 h-8 rounded-full object-cover border border-emerald-500 shadow-xs cursor-pointer" title="स्टाफ हाजिरी सेल्फ़ी">' : '<div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold">No Pic</div>';
+
+              var tPicHtml = s.tagPic ? '<img src="' + s.tagPic + '" onclick="openImageModal(this.src)" class="w-full h-36 object-cover rounded-xl border border-slate-200 cursor-pointer shadow-sm"><span class="text-[10px] font-bold text-slate-500 mt-1 block text-center">🔍 टैग / बारकोड फ़ोटो (Tap to Zoom)</span>' : '<div class="w-full h-24 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs">No Photo</div>';
+
+              qHtml += '<div class="p-3.5 bg-white border border-amber-300 rounded-2xl shadow-sm space-y-3 mb-3">' +
+                '<div class="flex justify-between items-start">' +
+                  '<div>' +
+                    '<div class="flex items-center gap-1.5">' +
+                      '<span class="font-black text-slate-900 text-sm">' + cat + '</span>' +
+                      '<span class="text-[11px] bg-indigo-100 text-indigo-900 font-black px-2 py-0.5 rounded-full">' + qty + ' Piece</span>' +
+                      '<span class="text-[9px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded">' + sBranch + '</span>' +
+                    '</div>' +
+                    '<div class="flex items-center gap-2 mt-1.5 p-1.5 bg-slate-50 rounded-xl border border-slate-100">' +
+                      attSelfieHtml +
+                      '<div>' +
+                        '<p class="text-[11px] text-indigo-950 font-bold leading-tight">' + stName + ' (' + stEmp + ')</p>' +
+                        '<p class="text-[9px] text-emerald-700 font-semibold">चेक-इन समय: ' + attTimeStr + '</p>' +
+                      '</div>' +
+                    '</div>' +
+                    '<p class="text-[10px] text-slate-500 mt-1">📅 ' + sDate + ' • ⏰ आइटम समय: ' + sTime + ' • 📝 ' + sNote + '</p>' +
+                  '</div>' +
+                  '<button onclick="rejectCounterItem(\'' + safeId + '\')" class="text-[10px] text-rose-600 font-bold hover:underline cursor-pointer">✕ रिजेक्ट</button>' +
+                '</div>' +
+                '<div>' + tPicHtml + '</div>' +
+                '<div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">' +
+                  '<div class="grid grid-cols-2 gap-1.5">' +
+                    '<div>' +
+                      '<label class="text-[10px] font-bold text-slate-500 block mb-0.5">सॉफ्टवेयर बिल नं.</label>' +
+                      '<input id="billNo_' + safeId + '" type="text" value="' + curBill + '" placeholder="उदा. 101" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold outline-none">' +
+                    '</div>' +
+                    '<div>' +
+                      '<label class="text-[10px] font-bold text-slate-500 block mb-0.5">बिल राशि (₹ Amount)</label>' +
+                      '<input id="amount_' + safeId + '" type="number" value="' + curAmt + '" placeholder="₹ Total" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-black text-slate-900 outline-none">' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="flex gap-2">' +
+                    '<select id="payment_' + safeId + '" class="w-1/3 p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold">' +
+                      '<option value="Cash">Cash</option>' +
+                      '<option value="UPI">UPI</option>' +
+                      '<option value="Card">Card</option>' +
+                      '<option value="उधार">उधार</option>' +
+                    '</select>' +
+                    '<button onclick="finalizeCounterBill(\'' + safeId + '\')" class="w-2/3 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs shadow transition flex items-center justify-center gap-1.5 cursor-pointer">' +
+                      '<i class="fa-solid fa-circle-check text-sm"></i> ✓ पास करें (Approve)' +
+                    '</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>';
+            }
+            counterFeed.innerHTML = qHtml;
+          }
+        }
+      } catch(e) {}
+
+      // Commission Feed
+      try {
+        var commFeed = document.getElementById('ownerCommissionFeed');
+        if (commFeed) {
+          if (filteredEmp.length === 0) {
+            commFeed.innerHTML = '<p class="text-slate-400 text-center py-2">कोई कर्मचारी नहीं है</p>';
+          } else {
+            var cHtml = '';
+            for (var m = 0; m < filteredEmp.length; m++) {
+              var emp = filteredEmp[m];
+              var empBilled = billedSales.filter(function(s) { return s && (s.staff === emp.name || s.empId === emp.id); });
+              var totalEmpPieces = empBilled.reduce(function(acc, s) { return acc + (parseInt(s.qty) || 1); }, 0);
+              var totalEmpComm = empBilled.reduce(function(acc, s) { return acc + (parseFloat(s.commission) || 0); }, 0);
+              var targetPieces = parseInt(emp.target) || 100;
+              var pct = Math.min(100, Math.round((totalEmpPieces / targetPieces) * 100));
+
+              cHtml += '<div onclick="showStaffTargetReport(\'' + emp.id + '\')" class="p-3 bg-slate-50 hover:bg-indigo-50/60 border border-slate-200 rounded-xl space-y-1.5 mb-2 cursor-pointer transition">' +
+                '<div class="flex justify-between items-center">' +
+                  '<div>' +
+                    '<span class="font-bold text-slate-900">' + emp.name + '</span>' +
+                    '<span class="text-[9px] bg-indigo-100 text-indigo-900 font-bold px-1.5 py-0.5 rounded ml-1">' + (emp.branch || 'Branch') + '</span>' +
+                  '</div>' +
+                  '<span class="font-black text-emerald-700 text-xs">कमीशन: ₹' + totalEmpComm.toLocaleString() + '</span>' +
+                '</div>' +
+                '<div class="flex justify-between text-[10px] text-slate-500 font-medium">' +
+                  '<span>स्वीकृत: <strong class="text-slate-800">' + totalEmpPieces + ' Pc</strong></span>' +
+                  '<span>टारगेट: ' + targetPieces + ' Pc (' + pct + '%)</span>' +
+                '</div>' +
+                '<div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">' +
+                  '<div class="bg-indigo-900 h-full rounded-full" style="width: ' + pct + '%"></div>' +
+                '</div>' +
+              '</div>';
+            }
+            commFeed.innerHTML = cHtml;
+          }
+        }
+      } catch(e) {}
+
+      // Attendance Feed
+      try {
+        var ownerAttEl = document.getElementById('ownerAttendanceFeed');
+        if (ownerAttEl) {
+          var approvedAttList = filteredAtt.filter(function(a) { return a && (a.status === 'approved' || !a.status); });
+          if (approvedAttList.length === 0) {
+            ownerAttEl.innerHTML = '<p class="text-slate-400 text-center py-2">चुनी हुई अवधि में कोई स्वीकृत हाजिरी दर्ज नहीं है</p>';
+          } else {
+            var aHtml = '';
+            for (var a = 0; a < approvedAttList.length; a++) {
+              var at = approvedAttList[a];
+              var selfieImg = at.selfie ? '<img src="' + at.selfie + '" onclick="openImageModal(this.src)" class="w-10 h-10 rounded-full object-cover border-2 border-indigo-900 cursor-pointer shadow-sm">' : '<div class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold">No Pic</div>';
+              var mapBtn = at.mapLink ? '<a href="' + at.mapLink + '" target="_blank" class="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-bold hover:underline flex items-center gap-1"><i class="fa-solid fa-location-arrow"></i> Map</a>' : '';
+
+              aHtml += '<div class="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-xl mb-2">' +
+                '<div class="flex items-center space-x-2.5">' +
+                  selfieImg +
+                  '<div>' +
+                    '<span class="font-bold text-slate-900 text-xs">' + (at.user || 'User') + '</span>' +
+                    '<p class="text-[10px] text-slate-500 mt-0.5">' + (at.date || '') + ' • ' + (at.time || '') + '</p>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="flex items-center gap-1.5">' +
+                  '<span class="text-[10px] font-bold ' + (at.type === 'Check-In' ? 'text-emerald-700 bg-emerald-100' : 'text-rose-700 bg-rose-100') + ' px-2 py-0.5 rounded-full">' + at.type + '</span>' +
+                  mapBtn +
+                '</div>' +
+              '</div>';
+            }
+            ownerAttEl.innerHTML = aHtml;
+          }
+        }
+      } catch(e) {}
+
+      // Owner Employee Management
+      try {
+        var empListEl = document.getElementById('ownerEmployeeList');
+        if (empListEl) {
+          if (filteredEmp.length === 0) {
+            empListEl.innerHTML = '<p class="text-slate-400 text-center py-2">कोई कर्मचारी पंजीकृत नहीं है</p>';
+          } else {
+            var eHtml = '';
+            for (var p = 0; p < filteredEmp.length; p++) {
+              var ep = filteredEmp[p];
+              eHtml += '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 mb-2.5">' +
+                '<div class="flex justify-between items-center">' +
+                  '<div>' +
+                    '<span class="font-bold text-slate-900 text-sm">' + ep.name + '</span>' +
+                    '<span class="text-[9px] bg-indigo-100 text-indigo-900 font-bold px-1.5 py-0.5 rounded ml-1.5">' + (ep.branch || 'Branch') + '</span>' +
+                    '<p class="text-[10px] text-slate-500 mt-0.5">ID: <strong class="text-indigo-900 font-mono">' + ep.id + '</strong> • PIN: <strong class="text-slate-800">' + (ep.pin || '1234') + '</strong> • टारगेट: <strong>' + (ep.target || 100) + ' Pc</strong></p>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="flex items-center gap-1.5 pt-1 border-t border-slate-200">' +
+                  '<button onclick="editEmployeeDetails(\'' + ep.id + '\')" class="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 font-bold rounded-lg text-[10px] cursor-pointer">' +
+                    '<i class="fa-solid fa-pen mr-1"></i> एडिट' +
+                  '</button>' +
+                  '<button onclick="resetStaffPin(\'' + ep.id + '\')" class="flex-1 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold rounded-lg text-[10px] cursor-pointer">' +
+                    '<i class="fa-solid fa-key mr-1"></i> पिन बदलें' +
+                  '</button>' +
+                  '<button onclick="forceCheckOutStaff(\'' + ep.id + '\', \'' + ep.name + '\')" class="flex-1 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg text-[10px] cursor-pointer" title="चेक-आउट भूलने पर">' +
+                    '🚪 Check-Out' +
+                  '</button>' +
+                  '<button onclick="deleteEmployee(\'' + ep.id + '\')" class="py-1.5 px-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 font-bold rounded-lg text-[10px] cursor-pointer" title="हटाएं">' +
+                    '<i class="fa-solid fa-trash"></i>' +
+                  '</button>' +
+                '</div>' +
+              '</div>';
+            }
+            empListEl.innerHTML = eHtml;
+          }
+        }
+      } catch(e) {}
+    }
+
+    function createEmployeeID() {
+      var name = document.getElementById('empNewName').value.trim();
+      var phone = document.getElementById('empNewPhone').value.trim();
+      var pin = document.getElementById('empNewPin').value.trim();
+      var branch = document.getElementById('empNewBranchSelect').value;
+      var target = parseInt(document.getElementById('empMonthlyTarget').value) || 100;
+
+      if (!name || !phone || pin.length !== 4) { alert("सभी विवरण सही भरें!"); return; }
+
+      var employees = LocalDB.get('employees');
+      var empId = "EMP" + (100 + employees.length + 1);
+      var newEmp = { id: empId, name: name, phone: phone, pin: pin, branch: branch, target: target, timestamp: Date.now() };
+
+      employees.unshift(newEmp);
+      LocalDB.set('employees', employees);
+      var empCol = getCompanyCollection("employees");
+      if (empCol) empCol.doc(empId).set(newEmp);
+
+      document.getElementById('empNewName').value = '';
+      document.getElementById('empNewPhone').value = '';
+      document.getElementById('empNewPin').value = '';
+
+      alert("✓ कर्मचारी ID: " + empId + " (" + branch + " | टारगेट: " + target + " Pc)");
+      renderLocalData();
+    }
+
+    function editEmployeeDetails(empId) {
+      var employees = LocalDB.get('employees');
+      var emp = employees.find(function(e) { return e.id === empId; });
+      if (!emp) return;
+
+      var newName = prompt("कर्मचारी का नाम बदलें:", emp.name);
+      if (newName === null || !newName.trim()) return;
+
+      var newBranch = prompt("स्टोर / शाखा का नाम लिखें:", emp.branch || "Main Store");
+      if (newBranch === null || !newBranch.trim()) return;
+
+      var newTarget = prompt("मासिक पीस टारगेट (Pieces):", emp.target || 100);
+      if (newTarget === null || isNaN(newTarget)) return;
+
+      emp.name = newName.trim();
+      emp.branch = newBranch.trim();
+      emp.target = parseInt(newTarget) || 100;
+
+      LocalDB.set('employees', employees);
+      var empCol = getCompanyCollection("employees");
+      if (empCol) empCol.doc(empId).update({ name: emp.name, branch: emp.branch, target: emp.target });
+
+      alert("✓ कर्मचारी विवरण अपडेट हुआ!");
+      renderLocalData();
+    }
+
+    function resetStaffPin(empId) {
+      var newPin = prompt("कर्मचारी (" + empId + ") के लिए नया 4-अंकों का पिन दर्ज करें:");
+      if (!newPin || newPin.length !== 4 || isNaN(newPin)) { alert("अमान्य पिन!"); return; }
+      var employees = LocalDB.get('employees');
+      var targetEmp = employees.find(function(e) { return e.id === empId; });
+      if (targetEmp) { targetEmp.pin = newPin; LocalDB.set('employees', employees); }
+      var empCol = getCompanyCollection("employees");
+      if (empCol) empCol.doc(empId).update({ pin: newPin });
+      alert("✓ नया पिन सेट हुआ: " + newPin);
+      renderLocalData();
+    }
+
+    function deleteEmployee(empId) {
+      if (!confirm("क्या आप वाकई कर्मचारी ID (" + empId + ") को हटाना चाहते हैं?")) return;
+      var employees = LocalDB.get('employees');
+      employees = employees.filter(function(e) { return e.id !== empId; });
+      LocalDB.set('employees', employees);
+      var empCol = getCompanyCollection("employees");
+      if (empCol) empCol.doc(empId).delete();
+      alert("✓ कर्मचारी हटा दिया गया!");
+      renderLocalData();
+    }
+
+    function changeMasterPIN() {
+      var oldPin = prompt("वर्तमान मास्टर पिन दर्ज करें:");
+      if (oldPin !== LocalDB.getMasterPin()) { alert("❌ गलत पिन!"); return; }
+      var newPin = prompt("नया 6 अंकों का मास्टर पिन दर्ज करें:");
+      if (!newPin || newPin.length !== 6) return;
+      LocalDB.setMasterPin(newPin);
+      var setCol = getCompanyCollection("settings");
+      if (setCol) setCol.doc("security").set({ masterPin: newPin }, { merge: true });
+      if (db) db.collection("stores_registry").doc(currentCompanyCode).update({ masterPin: newPin });
+      alert("✓ मास्टर पिन बदला गया!");
+    }
+
+    function clearAllDataEmergency() {
+      if (!confirm("क्या आप वाकई लोकल कैश साफ़ करना चाहते हैं?")) return;
+      localStorage.removeItem(LocalDB.getKeyPrefix() + 'sales');
+      localStorage.removeItem(LocalDB.getKeyPrefix() + 'attendance');
+      manualSyncFromCloud(function() {
+        alert("✓ नया डेटा लोड हुआ!");
+      });
+    }
+
+    function manualSyncFromCloud(callback) {
+      if (!db || !currentCompanyCode) { if (callback) callback(); return; }
+      var syncIcon = document.getElementById('syncIcon');
+      if (syncIcon) syncIcon.classList.add('animate-spin');
+
+      var salesCol = getCompanyCollection("sales");
+      var empCol = getCompanyCollection("employees");
+      var attCol = getCompanyCollection("attendance");
+
+      salesCol.get().then(function(snap) {
+        var cloudSales = [];
+        snap.forEach(function(doc) { cloudSales.push(doc.data()); });
+        cloudSales.sort(function(a,b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+        LocalDB.set('sales', cloudSales);
+
+        empCol.get().then(function(eSnap) {
+          var cloudEmp = [];
+          eSnap.forEach(function(doc) { cloudEmp.push(doc.data()); });
+          LocalDB.set('employees', cloudEmp);
+
+          attCol.get().then(function(aSnap) {
+            var cloudAtt = [];
+            aSnap.forEach(function(doc) { cloudAtt.push(doc.data()); });
+            cloudAtt.sort(function(a,b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+            LocalDB.set('attendance', cloudAtt);
+
+            renderLocalData();
+            if (syncIcon) syncIcon.classList.remove('animate-spin');
+            if (callback) callback();
+          });
+        });
+      }).catch(function() {
+        if (syncIcon) syncIcon.classList.remove('animate-spin');
+        if (callback) callback();
+      });
+    }
+
+    function startRealtimeCloudSync() {
+      renderLocalData();
+      if (!db || !currentCompanyCode) return;
+
+      var setCol = getCompanyCollection("settings");
+      var empCol = getCompanyCollection("employees");
+      var salesCol = getCompanyCollection("sales");
+      var attCol = getCompanyCollection("attendance");
+
+      setCol.doc("categories_list").onSnapshot(function(doc) {
+        if (doc.exists && doc.data().list) {
+          LocalDB.setCategories(doc.data().list);
+          renderCategoryManagerUI();
+        }
+      });
+
+      empCol.onSnapshot(function(snap) {
+        var cloudEmp = [];
+        snap.forEach(function(doc) { cloudEmp.push(doc.data()); });
+        LocalDB.set('employees', cloudEmp);
+        renderLocalData();
+      });
+
+      salesCol.onSnapshot(function(snap) {
+        var cloudSales = [];
+        snap.forEach(function(doc) { cloudSales.push(doc.data()); });
+        cloudSales.sort(function(a,b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+        LocalDB.set('sales', cloudSales);
+        renderLocalData();
+      });
+
+      attCol.onSnapshot(function(snap) {
+        var cloudAtt = [];
+        snap.forEach(function(doc) { cloudAtt.push(doc.data()); });
+        cloudAtt.sort(function(a,b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+        LocalDB.set('attendance', cloudAtt);
+        renderLocalData();
+      });
+    }
+
+    function openImageModal(src) {
+      var modal = document.getElementById('imageModal');
+      var img = document.getElementById('modalImg');
+      if (modal && img) { img.src = src; modal.style.display = 'flex'; }
+    }
+    function closeImageModal() {
+      var modal = document.getElementById('imageModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function exportToExcel() {
+      var sales = LocalDB.get('sales').filter(function(s) { return s.status === 'billed' || s.status === 'approved'; });
+      if (sales.length === 0) { alert("कोई बिल डेटा नहीं है!"); return; }
+      var csv = "Store Code,Date,Branch,Time,Bill No,Category,Quantity (Pieces),Payment,Amount,Commission,Staff,Staff ID\n";
+      sales.forEach(function(s) {
+        csv += '"' + currentCompanyCode + '","' + (s.date || '') + '","' + (s.branch || '') + '","' + (s.billedTime || s.sentTime || '') + '","' + (s.billNo || '') + '","' + (s.category || '') + '","' + (s.qty || 1) + '","' + (s.payment || '') + '","' + (s.amount || 0) + '","' + (s.commission || 0) + '","' + (s.staff || '') + '","' + (s.empId || '') + '"\n';
+      });
+      var link = document.createElement("a");
+      link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
+      link.download = currentCompanyCode + "_Sales_Report_" + new Date().toISOString().slice(0,10) + ".csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function appLogout() {
+      currentUser = null;
+      currentRole = null;
+      currentEmpId = null;
+      document.getElementById('appContainer').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+  </script>
+</body>
+</html>
